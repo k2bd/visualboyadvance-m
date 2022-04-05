@@ -5,6 +5,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <iostream>
+
+#include <SFML/Network.hpp>
+#include <SFML/System/String.hpp>
+#include <SFML/System/Utf.hpp>
 
 #include "../NLS.h"
 #include "../System.h"
@@ -18,6 +23,7 @@
 #include "gbMemory.h"
 #include "gbSGB.h"
 #include "gbSound.h"
+
 
 #ifdef __GNUC__
 #define _stricmp strcasecmp
@@ -203,6 +209,12 @@ bool gbCapture = false;
 bool gbCapturePrevious = false;
 int gbJoymask[4] = { 0, 0, 0, 0 };
 static bool allow_colorizer_hack;
+
+// Gateau
+int gateau_calls_until_emit = 0;
+int gateau_frame_count = 0;
+sf::TcpSocket socket;
+sf::Socket::Status gateau_socket_status = socket.connect("127.0.0.1", 55722);
 
 uint8_t gbRamFill = 0xff;
 
@@ -4615,12 +4627,93 @@ static void gbUpdateJoypads(bool readSensors)
     }
 }
 
+// See http://www.zedwood.com/article/cpp-utf8-strlen-function
+int utf8_strlen(const std::string& str)
+{
+    int c, i, ix;
+    int64_t q;
+    for (q = 0, i = 0, ix = str.length(); i < ix; i++, q++)
+    {
+        c = (unsigned char)str[i];
+        if (c >= 0 && c <= 127) i += 0;
+        else if ((c & 0xE0) == 0xC0) i += 1;
+        else if ((c & 0xF0) == 0xE0) i += 2;
+        else if ((c & 0xF8) == 0xF0) i += 3;
+        //else if (($c & 0xFC) == 0xF8) i+=4; // 111110bb //byte 5, unnecessary in 4 byte UTF-8
+        //else if (($c & 0xFE) == 0xFC) i+=5; // 1111110b //byte 6, unnecessary in 4 byte UTF-8
+        else return 0;//invalid utf8
+    }
+    return q;
+}
+
+std::string gateau_message_address_component(const int start, const int end_exclusive) {
+    std::string message = u8"";
+    for (int i = start; i < end_exclusive; i++) {
+        message += "{\"location\": ";
+        message += std::to_string(i);
+        message += ", \"value\": ";
+        message += std::to_string(gbReadMemory(i));
+        message += "},";
+    }
+
+    return message;
+}
+
 void gbEmulate(int ticksToStop)
 {
     gbRegister tempRegister;
     uint8_t tempValue;
     int8_t offset;
 
+    // Gateau
+    gateau_frame_count++;
+    std::cout << gateau_socket_status;
+    std::cout << "\n\n";
+    if (gateau_calls_until_emit <= 0) {
+        std::cout << "Emitting\n";
+        gateau_calls_until_emit = 60;
+
+        std::string message = u8"";
+
+        // Temporary ranges for the pokemon games that are supported
+        message += gateau_message_address_component(0xD2F7, 0xD31D);
+        message += gateau_message_address_component(0xDBE4, 0xDC24);
+        message += gateau_message_address_component(0xDE99, 0xDED9);
+
+        // Remove trailing comma
+        message.pop_back();
+
+        message = "{\"ram_data\": [" + message + "], \"frame\": " + std::to_string(gateau_frame_count) + "}";
+
+        int64_t message_size = utf8_strlen(message);
+
+        std::cout << message;
+        std::cout << "\n";
+        std::cout << message_size;
+        std::cout << "\n";
+
+        char message_size_buffer[8];
+        memcpy(message_size_buffer, &message_size, 8);
+
+        std::cout << message_size_buffer;
+        std::cout << "\n";
+
+        auto message_utf8 = sf::String(message).toUtf8();
+        std::cout << message_utf8.data();
+        std::cout << "\n";
+
+        if (socket.send(message_size_buffer, 8) != sf::Socket::Done) {
+            std::cout << "Error";
+        };
+        if (socket.send(message_utf8.data(), message_size) != sf::Socket::Done) {
+            std::cout << "Error2";
+        };
+    }
+    else {
+        gateau_calls_until_emit--;
+    }
+    std::cout << gateau_calls_until_emit;
+    std::cout << "\n";
 
     clockTicks = 0;
     gbDmaTicks = 0;
