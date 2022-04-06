@@ -211,7 +211,7 @@ int gbJoymask[4] = { 0, 0, 0, 0 };
 static bool allow_colorizer_hack;
 
 // Gateau
-int gateau_calls_until_emit = 0;
+int gateau_calls_until_emit = 60;
 int gateau_frame_count = 0;
 sf::TcpSocket socket;
 sf::Socket::Status gateau_socket_status = socket.connect("127.0.0.1", 55722);
@@ -4667,10 +4667,7 @@ void gbEmulate(int ticksToStop)
 
     // Gateau
     gateau_frame_count++;
-    std::cout << gateau_socket_status;
-    std::cout << "\n\n";
     if (gateau_calls_until_emit <= 0) {
-        std::cout << "Emitting\n";
         gateau_calls_until_emit = 60;
 
         std::string message = u8"";
@@ -4687,20 +4684,10 @@ void gbEmulate(int ticksToStop)
 
         int64_t message_size = utf8_strlen(message);
 
-        std::cout << message;
-        std::cout << "\n";
-        std::cout << message_size;
-        std::cout << "\n";
-
         char message_size_buffer[8];
         memcpy(message_size_buffer, &message_size, 8);
 
-        std::cout << message_size_buffer;
-        std::cout << "\n";
-
         auto message_utf8 = sf::String(message).toUtf8();
-        std::cout << message_utf8.data();
-        std::cout << "\n";
 
         if (socket.send(message_size_buffer, 8) != sf::Socket::Done) {
             std::cout << "Error";
@@ -4712,8 +4699,6 @@ void gbEmulate(int ticksToStop)
     else {
         gateau_calls_until_emit--;
     }
-    std::cout << gateau_calls_until_emit;
-    std::cout << "\n";
 
     clockTicks = 0;
     gbDmaTicks = 0;
